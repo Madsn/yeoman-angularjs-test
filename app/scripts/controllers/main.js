@@ -7,4 +7,9 @@ angular.module('systematicEmployeesClubApp')
       'AngularJS',
       'Karma'
     ];
-  });
+
+
+  }
+);
+
+
