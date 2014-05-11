@@ -15,6 +15,8 @@ module.exports = function (grunt) {
   // Time how long tasks take. Can help when optimizing build times
   require('time-grunt')(grunt);
 
+  grunt.loadNpmTasks('grunt-ssh');
+
   // Define the configuration for all the tasks
   grunt.initConfig({
 
@@ -23,6 +25,89 @@ module.exports = function (grunt) {
       // configurable paths
       app: require('./bower.json').appPath || 'app',
       dist: 'dist'
+    },
+
+    sshconfig: {
+      "webfaction": grunt.file.readJSON('SECRET-webfaction.json')
+    },
+
+    sshexec: {
+      webfactionClearDeployDir: {
+        command: "rm -r <%= sshconfig.webfaction.path%>*",
+        options: {
+          host: '<%= sshconfig.webfaction.host %>',
+          username: '<%= sshconfig.webfaction.username %>',
+          password: '<%= sshconfig.webfaction.password %>',
+          path: '<%= sshconfig.webfaction.path %>'
+        }
+      },
+      webfactionDeployUploaded: {
+        command: [
+          "cd <%= sshconfig.webfaction.path%>",
+          "rm -r $(ls <%= sshconfig.webfaction.path%> | grep -v '^dist$')",
+          "mv <%= sshconfig.webfaction.path%>dist/* <%= sshconfig.webfaction.path%>",
+          "rm -r <%= sshconfig.webfaction.path%>dist"
+        ].join(' && '),
+        options: {
+          host: '<%= sshconfig.webfaction.host %>',
+          username: '<%= sshconfig.webfaction.username %>',
+          password: '<%= sshconfig.webfaction.password %>',
+          path: '<%= sshconfig.webfaction.path %>'
+        }
+      }
+      /*
+      webfactionDeployUploadedWithBackup: {
+        command: [
+          "shopt -s extglob",
+          "rm -rf <%= sshconfig.webfaction.path%>backup",
+          "mkdir -p <%= sshconfig.webfaction.path %>backup",
+          "cd <%= sshconfig.webfaction.path%>",
+          "cp -r <%= sshconfig.webfaction.path %>!(dist|backup) <% sshconfig.webfaction.path %>backup/",
+          "find . ! -name dist ! -name backup -maxdepth 1",
+          //"rm -r $(ls <%= sshconfig.webfaction.path%> | grep -v '^(dist|backup)$')",
+          "mv <%= sshconfig.webfaction.path%>dist/* <%= sshconfig.webfaction.path%>"
+        ].join(' && '),
+        options: {
+          host: '<%= sshconfig.webfaction.host %>',
+          username: '<%= sshconfig.webfaction.username %>',
+          password: '<%= sshconfig.webfaction.password %>',
+          path: '<%= sshconfig.webfaction.path %>'
+        }
+      }
+      */
+    },
+
+    sftp: {
+      // uploads directly to deploy dir
+      uploadToWebfactionDeployDir : {
+        files: {
+          "./": "dist/**"
+        },
+        options: {
+          host: '<%= sshconfig.webfaction.host %>',
+          username: '<%= sshconfig.webfaction.username %>',
+          password: '<%= sshconfig.webfaction.password %>',
+          path: '<%= sshconfig.webfaction.path %>',
+          srcBasePath: 'dist/',
+          createDirectories: true,
+          showProgress: true
+        }
+      },
+
+      // will upload the dist folder to deploypath/dist
+      uploadToWebfaction : {
+        files: {
+          "./": "dist/**"
+        },
+        options: {
+          host: '<%= sshconfig.webfaction.host %>',
+          username: '<%= sshconfig.webfaction.username %>',
+          password: '<%= sshconfig.webfaction.password %>',
+          path: '<%= sshconfig.webfaction.path %>',
+          createDirectories: true,
+          showProgress: true
+        }
+      }
     },
 
     // Watches files for changes and runs tasks based on the changed files
@@ -406,6 +491,25 @@ module.exports = function (grunt) {
     'newer:jshint',
     'test',
     'build'
+  ]);
+
+  // Uploads files, deletes old files, moves uploaded files
+  grunt.registerTask('deployToWebfaction-full',[
+    'sftp:uploadToWebfaction',
+    'sshexec:webfactionDeployUploaded'
+  ]);
+
+  // Deletes old files, uploads new directly to deploy dir
+  // warning: will result in downtime while uploading
+  grunt.registerTask('deployToWebfaction-clean', [
+    'sshexec:webfactionClearDeployDir',
+    'sftp:uploadToWebfactionDeployDir'
+  ]);
+
+  // Uploads files, overwriting where relevant - does not delete no longer used files
+  grunt.registerTask('deployToWebfaction-quick',[
+    'sftp:uploadToWebfaction',
+    'sshexec:webfactionDeployUploaded'
   ]);
 
 };
